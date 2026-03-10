@@ -1,6 +1,16 @@
+# python
 __pycache__/
 *.pyc
-topwatch_state.json
+
+# reports
 last_report.txt
+
+# state
+topwatch_state.json
+
+# env
 .env
 .venv/
+
+# vscode
+.vscode/
