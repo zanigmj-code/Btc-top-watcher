@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+topwatch_state.json
+last_report.txt
+.env
+.venv/
