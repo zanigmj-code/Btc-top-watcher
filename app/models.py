@@ -254,3 +254,27 @@ def compute_cycle_position(pi: Dict[str, Any]) -> Dict[str, Any]:
         "percent": percent,
         "phase": phase,
     }
+
+
+def compute_market_heat_score(pi: Dict[str, Any]) -> Dict[str, Any]:
+    prob = compute_top_probability_components(pi)
+    cycle = compute_cycle_position(pi)
+
+    heat = round((prob["probability"] * 0.6) + (cycle["percent"] * 0.4))
+    heat = max(0, min(100, heat))
+
+    if heat >= 85:
+        state = "OVERHEATED"
+    elif heat >= 65:
+        state = "HOT"
+    elif heat >= 40:
+        state = "WARM"
+    elif heat >= 20:
+        state = "COOL"
+    else:
+        state = "COLD"
+
+    return {
+        "score": heat,
+        "state": state,
+    }

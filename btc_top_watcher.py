@@ -11,7 +11,8 @@ from app.models import classify
 from app.reporting import format_report
 from app.state import load_state, save_state
 from app.history import append_history
-from app.models import compute_cycle_position, compute_top_probability_components
+from app.models import compute_cycle_position, compute_top_probability_components, compute_market_heat_score
+from app.chart import generate_chart
 
 def run_once(print_only: bool = False) -> str:
     prices = fetch_btc_prices()
@@ -32,14 +33,18 @@ def run_once(print_only: bool = False) -> str:
 
     prob = compute_top_probability_components(pi)
     cycle = compute_cycle_position(pi)
+    heat = compute_market_heat_score(pi)
 
     append_history({
         "date": pi["last_date"],
         "btc_price": round(pi["last_price"], 2),
         "top_probability": prob["probability"],
+        "market_heat": heat["score"],
         "cycle_position": cycle["percent"],
         "cycle_phase": cycle["phase"],
     })
+
+    generate_chart()
 
     if print_only:
         return report
