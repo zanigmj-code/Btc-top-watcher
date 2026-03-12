@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional
 
-from app.models import compute_top_probability_components
-
+from app.models import compute_top_probability_components, compute_cycle_position
 
 def explain_indicator(name: str, state: str, extra: str = "") -> str:
     explanations = {
@@ -40,7 +39,7 @@ def explain_indicator(name: str, state: str, extra: str = "") -> str:
 
 def format_report(pi: Dict[str, Any], metrics: Optional[Dict[str, Any]], status: str, flags: Dict[str, bool]) -> str:
     prob = compute_top_probability_components(pi)
-
+    cycle = compute_cycle_position(pi)    
     pi_pct = round(prob["pi_cycle"]["score"] / prob["pi_cycle"]["max_score"] * 100)
     rainbow_pct = round(prob["rainbow"]["score"] / prob["rainbow"]["max_score"] * 100)
     mvrv_pct = round(prob["mvrv_approx"]["score"] / prob["mvrv_approx"]["max_score"] * 100)
@@ -49,6 +48,8 @@ def format_report(pi: Dict[str, Any], metrics: Optional[Dict[str, Any]], status:
     lines = []
     lines.append(f"BTC Top Watcher: {status}")
     lines.append(f"Top Probability: {prob['probability']}% ({prob['level']})")
+    lines.append(f"Cycle Position: {cycle['percent']}%")
+    lines.append(f"Cycle Phase: {cycle['phase']}")
     lines.append(f"Date: {pi['last_date']}")
     lines.append(f"BTC price: ${pi['last_price']:,.2f}")
     lines.append("")

@@ -10,7 +10,8 @@ from app.indicators import compute_pi_cycle
 from app.models import classify
 from app.reporting import format_report
 from app.state import load_state, save_state
-
+from app.history import append_history
+from app.models import compute_cycle_position, compute_top_probability_components
 
 def run_once(print_only: bool = False) -> str:
     prices = fetch_btc_prices()
@@ -28,6 +29,17 @@ def run_once(print_only: bool = False) -> str:
 
     status, flags = classify(pi, metrics)
     report = format_report(pi, metrics, status, flags)
+
+    prob = compute_top_probability_components(pi)
+    cycle = compute_cycle_position(pi)
+
+    append_history({
+        "date": pi["last_date"],
+        "btc_price": round(pi["last_price"], 2),
+        "top_probability": prob["probability"],
+        "cycle_position": cycle["percent"],
+        "cycle_phase": cycle["phase"],
+    })
 
     if print_only:
         return report
