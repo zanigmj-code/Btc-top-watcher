@@ -218,18 +218,21 @@ def compute_top_probability_components(pi: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def compute_cycle_position(pi: Dict[str, Any]) -> Dict[str, Any]:
+    prob = compute_top_probability_components(pi)
+    probability = prob["probability"]
+
     gap = float(pi["gap_pct"])
 
     if pi["at_or_above"]:
         percent = 100
     elif gap <= 3:
-        percent = 95
+        percent = 92
     elif gap <= 7:
-        percent = 85
+        percent = 80
     elif gap <= 12:
-        percent = 72
+        percent = 68
     elif gap <= 20:
-        percent = 58
+        percent = 55
     elif gap <= 30:
         percent = 42
     elif gap <= 45:
@@ -237,12 +240,15 @@ def compute_cycle_position(pi: Dict[str, Any]) -> Dict[str, Any]:
     else:
         percent = 15
 
-    if percent < 35:
+    # phase detection using both cycle position and probability
+    if percent < 35 and probability < 25:
         phase = "Early Bull"
-    elif percent < 70:
+    elif percent < 70 and probability < 50:
         phase = "Mid Bull"
-    else:
+    elif percent >= 70 or probability >= 50:
         phase = "Late Bull"
+    else:
+        phase = "Transition"
 
     return {
         "percent": percent,
