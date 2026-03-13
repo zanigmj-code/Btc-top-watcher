@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+from app.indicators import compute_pi_cycle, compute_trend_metrics
 
 from app.data_fetchers import fetch_btc_prices
 from app.indicators import compute_pi_cycle
@@ -30,9 +31,10 @@ def main():
 
         try:
             pi = compute_pi_cycle(partial_prices)
+            trend = compute_trend_metrics(partial_prices)
             prob = compute_top_probability_components(pi)
             cycle = compute_cycle_position(pi)
-            heat = compute_market_heat_score(pi)
+            heat = compute_market_heat_score(pi, trend)
             pi_score = compute_pi_cycle_score(pi)
 
             history.append({

@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, Tuple
 
 from app.config import MVRV_NEAR, MVRV_TOP, PUELL_NEAR, PUELL_TOP
-
+from app.indicators import compute_trend_metrics
 
 def classify(pi: Dict[str, Any], metrics: Optional[Dict[str, Any]]) -> Tuple[str, Dict[str, bool]]:
     pi_near = bool(pi["near_top"])
@@ -265,31 +265,59 @@ def compute_cycle_position(pi: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def compute_market_heat_score(pi: Dict[str, Any]) -> Dict[str, Any]:
+def compute_market_heat_score(pi: Dict[str, Any], trend: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     prob = compute_top_probability_components(pi)
-    cycle = compute_cycle_position(pi)
 
-    raw_heat = round((prob["probability"] * 0.8) + (cycle["percent"] * 0.2))
+    if trend is None:
+        trend = {
+            "price_vs_sma200": 1.0,
+            "price_vs_sma350": 1.0,
+            "return_90d": 0.0,
+            "return_180d": 0.0,
+            "return_365d": 0.0,
+        }
 
-    # calibration so historical cycle tops can actually reach 80+
-    if raw_heat >= 50:
-        heat = round(raw_heat * 1.45)
-    elif raw_heat >= 30:
-        heat = round(raw_heat * 1.25)
-    elif raw_heat >= 15:
-        heat = round(raw_heat * 1.10)
-    else:
-        heat = raw_heat
+    trend_strength = compute_trend_strength_score(trend)
+    acceleration = compute_acceleration_score(trend)
+    distribution = compute_distribution_score(trend)
 
-    heat = max(0, min(100, heat))
+    # 1) Overextension: rainbow + mvrv + puell
+    overextension_score = round(
+        (
+            prob["rainbow"]["score"]
+            + prob["mvrv_approx"]["score"]
+            + prob["puell_approx"]["score"]
+        )
+        / 55
+        * 35
+    )
+
+    # 2) Cycle exhaustion: Pi Cycle is still the strongest top signal
+    cycle_exhaustion_score = round((prob["pi_cycle"]["score"] / 45) * 30)
+
+    # 3) Trend / acceleration / distribution are supporting context, not the main driver
+    trend_strength_score = round((trend_strength["score"] / 30) * 12)
+    acceleration_score = round((acceleration["score"] / 30) * 12)
+    distribution_score = round((distribution["score"] / 44) * 11)
+
+    raw_heat = (
+        overextension_score
+        + cycle_exhaustion_score
+        + trend_strength_score
+        + acceleration_score
+        + distribution_score
+    )
+
+    heat = int(max(0, min(100, round(raw_heat))))
+    raw_heat_capped = heat
 
     if heat >= 85:
         state = "OVERHEATED"
     elif heat >= 65:
         state = "HOT"
-    elif heat >= 40:
+    elif heat >= 45:
         state = "WARM"
-    elif heat >= 20:
+    elif heat >= 25:
         state = "COOL"
     else:
         state = "COLD"
@@ -298,7 +326,17 @@ def compute_market_heat_score(pi: Dict[str, Any]) -> Dict[str, Any]:
         "score": heat,
         "state": state,
         "raw_score": raw_heat,
+        "raw_score_capped": raw_heat_capped,
+        "overextension_score": overextension_score,
+        "cycle_exhaustion_score": cycle_exhaustion_score,
+        "trend_strength_score": trend_strength_score,
+        "acceleration_score": acceleration_score,
+        "distribution_score": distribution_score,
+        "trend_strength_state": trend_strength["state"],
+        "acceleration_state": acceleration["state"],
+        "distribution_state": distribution["state"],
     }
+
 from datetime import datetime
 
 
@@ -348,3 +386,192 @@ def get_trend_decay_multiplier(date_str: str) -> float:
     progress = (dt - start).days / total
 
     return 1.0 - (0.15 * progress)
+
+def compute_trend_strength_score(trend: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+
+    p200 = float(trend["price_vs_sma200"])
+    p350 = float(trend["price_vs_sma350"])
+
+    if p200 >= 1.6:
+        score += 15
+    elif p200 >= 1.35:
+        score += 11
+    elif p200 >= 1.15:
+        score += 7
+    elif p200 >= 1.0:
+        score += 4
+
+    if p350 >= 2.4:
+        score += 15
+    elif p350 >= 1.9:
+        score += 11
+    elif p350 >= 1.4:
+        score += 7
+    elif p350 >= 1.1:
+        score += 4
+
+    if score >= 24:
+        state = "Very strong"
+    elif score >= 16:
+        state = "Strong"
+    elif score >= 8:
+        state = "Moderate"
+    else:
+        state = "Weak"
+
+    return {
+        "score": score,
+        "max_score": 30,
+        "state": state,
+    }
+
+
+def compute_acceleration_score(trend: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+
+    r90 = float(trend["return_90d"])
+    r180 = float(trend["return_180d"])
+    r365 = float(trend["return_365d"])
+
+    if r90 >= 80:
+        score += 10
+    elif r90 >= 40:
+        score += 7
+    elif r90 >= 20:
+        score += 4
+
+    if r180 >= 150:
+        score += 10
+    elif r180 >= 80:
+        score += 7
+    elif r180 >= 30:
+        score += 4
+
+    if r365 >= 250:
+        score += 10
+    elif r365 >= 120:
+        score += 7
+    elif r365 >= 50:
+        score += 4
+
+    if score >= 24:
+        state = "Explosive"
+    elif score >= 16:
+        state = "Fast"
+    elif score >= 8:
+        state = "Healthy"
+    else:
+        state = "Slow"
+
+    return {
+        "score": score,
+        "max_score": 30,
+        "state": state,
+    }
+
+def compute_sell_signal(heat: float, top_prob: float) -> Dict[str, Any]:
+    if top_prob >= 85 or heat >= 85:
+        return {"action": "STRONG SELL", "size": 50, "state": "Extreme"}
+    elif top_prob >= 70 or heat >= 70:
+        return {"action": "SELL", "size": 25, "state": "Hot"}
+    elif top_prob >= 55 or heat >= 55:
+        return {"action": "REDUCE", "size": 10, "state": "Warm"}
+    else:
+        return {"action": "HOLD", "size": 0, "state": "No sell signal"}
+
+
+def compute_buy_signal(pi: Dict[str, Any], trend: Dict[str, Any], heat: float) -> Dict[str, Any]:
+    p200 = float(trend["price_vs_sma200"])
+    p350 = float(trend["price_vs_sma350"])
+    r90 = float(trend["return_90d"])
+    r180 = float(trend["return_180d"])
+
+    score = 0
+
+    if heat <= 20:
+        score += 30
+    elif heat <= 30:
+        score += 18
+
+    if p200 <= 1.05:
+        score += 20
+    elif p200 <= 1.15:
+        score += 10
+
+    if p350 <= 1.10:
+        score += 20
+    elif p350 <= 1.25:
+        score += 10
+
+    if r90 <= 0:
+        score += 15
+    elif r90 <= 15:
+        score += 8
+
+    if r180 <= 0:
+        score += 15
+    elif r180 <= 25:
+        score += 8
+
+    if pi["gap_pct"] >= 25:
+        score += 10
+
+    if score >= 70:
+        return {"action": "STRONG BUY", "size": 25, "state": "Deep value"}
+    elif score >= 45:
+        return {"action": "BUY", "size": 15, "state": "Value zone"}
+    elif score >= 25:
+        return {"action": "ACCUMULATE", "size": 5, "state": "Light buy"}
+    else:
+        return {"action": "HOLD", "size": 0, "state": "No buy signal"}
+    
+def compute_distribution_score(trend: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+
+    p200 = float(trend["price_vs_sma200"])
+    p350 = float(trend["price_vs_sma350"])
+    r90 = float(trend["return_90d"])
+    r180 = float(trend["return_180d"])
+    r365 = float(trend["return_365d"])
+
+    if p200 >= 1.45:
+        score += 10
+    elif p200 >= 1.25:
+        score += 6
+
+    if p350 >= 2.0:
+        score += 10
+    elif p350 >= 1.6:
+        score += 6
+
+    if r90 >= 60:
+        score += 8
+    elif r90 >= 30:
+        score += 4
+
+    if r180 >= 120:
+        score += 8
+    elif r180 >= 70:
+        score += 4
+
+    if r365 >= 180:
+        score += 8
+    elif r365 >= 100:
+        score += 4
+
+    if score >= 34:
+        state = "Extreme"
+    elif score >= 22:
+        state = "High"
+    elif score >= 12:
+        state = "Elevated"
+    else:
+        state = "Normal"
+
+    return {
+        "score": score,
+        "max_score": 44,
+        "state": state,
+    }
+

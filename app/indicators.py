@@ -63,3 +63,30 @@ def compute_pi_cycle(prices: List[Tuple[int, float]]) -> Dict[str, Any]:
             prices[-1][0] / 1000, tz=timezone.utc
         ).date().isoformat(),
     }
+
+def compute_trend_metrics(prices: List[Tuple[int, float]]) -> Dict[str, Any]:
+    closes = [p for _, p in prices]
+
+    sma200 = sma(closes, 200)
+    sma350 = sma(closes, 350)
+
+    last_price = closes[-1]
+
+    sma200_last = sma200[-1] if sma200[-1] is not None else last_price
+    sma350_last = sma350[-1] if sma350[-1] is not None else last_price
+
+    def safe_return(days: int) -> float:
+        if len(closes) <= days:
+            return 0.0
+        old = closes[-1 - days]
+        if old <= 0:
+            return 0.0
+        return ((last_price / old) - 1.0) * 100.0
+
+    return {
+        "price_vs_sma200": last_price / sma200_last if sma200_last else 1.0,
+        "price_vs_sma350": last_price / sma350_last if sma350_last else 1.0,
+        "return_90d": safe_return(90),
+        "return_180d": safe_return(180),
+        "return_365d": safe_return(365),
+    }

@@ -2,6 +2,8 @@
 import os
 import time
 import argparse
+from app.indicators import compute_trend_metrics
+
 from datetime import datetime
 
 from app.config import STATE_FILE
@@ -19,10 +21,13 @@ from app.models import (
 )
 from app.chart import generate_chart
 
+# // run_once
+
 def run_once(print_only: bool = False) -> str:
     prices = fetch_btc_prices()
     print(f"Downloaded BTC rows: {len(prices)}")
     pi = compute_pi_cycle(prices)
+    trend = compute_trend_metrics(prices)
 
     metrics = None
     api_key = os.environ.get("GLASSNODE_API_KEY")
@@ -38,7 +43,7 @@ def run_once(print_only: bool = False) -> str:
 
     prob = compute_top_probability_components(pi)
     cycle = compute_cycle_position(pi)
-    heat = compute_market_heat_score(pi)
+    heat = compute_market_heat_score(pi, trend)
     pi_score = compute_pi_cycle_score(pi)
 
     append_history({
