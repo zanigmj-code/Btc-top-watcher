@@ -11,7 +11,12 @@ from app.models import classify
 from app.reporting import format_report
 from app.state import load_state, save_state
 from app.history import append_history
-from app.models import compute_cycle_position, compute_top_probability_components, compute_market_heat_score
+from app.models import (
+    compute_cycle_position,
+    compute_top_probability_components,
+    compute_market_heat_score,
+    compute_pi_cycle_score,
+)
 from app.chart import generate_chart
 
 def run_once(print_only: bool = False) -> str:
@@ -34,6 +39,7 @@ def run_once(print_only: bool = False) -> str:
     prob = compute_top_probability_components(pi)
     cycle = compute_cycle_position(pi)
     heat = compute_market_heat_score(pi)
+    pi_score = compute_pi_cycle_score(pi)
 
     append_history({
         "date": pi["last_date"],
@@ -42,6 +48,7 @@ def run_once(print_only: bool = False) -> str:
         "market_heat": heat["score"],
         "cycle_position": cycle["percent"],
         "cycle_phase": cycle["phase"],
+        "pi_cycle_score": pi_score["score"],
     })
 
     generate_chart()

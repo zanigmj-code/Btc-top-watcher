@@ -174,11 +174,20 @@ def compute_top_probability_components(pi: Dict[str, Any]) -> Dict[str, Any]:
     mvrv_comp = compute_mvrv_approx(pi)
     puell_comp = compute_puell_approx(pi)
 
+    cycle_decay = get_cycle_decay_multiplier(pi["last_date"])
+    trend_decay = get_trend_decay_multiplier(pi["last_date"])
+    decay = cycle_decay * trend_decay
+
+    pi_score = round(min(pi_comp["score"], 30) * decay)
+    rainbow_score = round(rainbow_comp["score"] * decay)
+    mvrv_score = round(mvrv_comp["score"] * decay)
+    puell_score = round(puell_comp["score"] * decay)
+
     total_score = (
-        pi_comp["score"]
-        + rainbow_comp["score"]
-        + mvrv_comp["score"]
-        + puell_comp["score"]
+        pi_score
+        + rainbow_score
+        + mvrv_score
+        + puell_score
     )
 
     probability = min(100, round(total_score))
@@ -260,7 +269,18 @@ def compute_market_heat_score(pi: Dict[str, Any]) -> Dict[str, Any]:
     prob = compute_top_probability_components(pi)
     cycle = compute_cycle_position(pi)
 
-    heat = round((prob["probability"] * 0.6) + (cycle["percent"] * 0.4))
+    raw_heat = round((prob["probability"] * 0.8) + (cycle["percent"] * 0.2))
+
+    # calibration so historical cycle tops can actually reach 80+
+    if raw_heat >= 50:
+        heat = round(raw_heat * 1.45)
+    elif raw_heat >= 30:
+        heat = round(raw_heat * 1.25)
+    elif raw_heat >= 15:
+        heat = round(raw_heat * 1.10)
+    else:
+        heat = raw_heat
+
     heat = max(0, min(100, heat))
 
     if heat >= 85:
@@ -277,4 +297,54 @@ def compute_market_heat_score(pi: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "score": heat,
         "state": state,
+        "raw_score": raw_heat,
     }
+from datetime import datetime
+
+
+def get_cycle_decay_multiplier(date_str: str) -> float:
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+
+    if dt < datetime(2016, 7, 9):
+        return 1.00
+    elif dt < datetime(2020, 5, 11):
+        return 0.88
+    elif dt < datetime(2024, 4, 20):
+        return 0.76
+    else:
+        return 0.66
+    
+def compute_trade_action(heat: float, top_prob: float):
+    if top_prob >= 80:
+        return "STRONG SELL", 50
+
+    if heat >= 70:
+        return "SELL", 25
+
+    if heat >= 55:
+        return "REDUCE", 10
+
+    if heat <= 15 and top_prob < 20:
+        return "BUY", 20
+
+    if heat <= 25:
+        return "ACCUMULATE", 10
+
+    return "HOLD", 0
+
+def get_trend_decay_multiplier(date_str: str) -> float:
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+
+    start = datetime(2016, 1, 1)
+    end = datetime(2032, 1, 1)
+
+    if dt <= start:
+        return 1.0
+
+    if dt >= end:
+        return 0.85
+
+    total = (end - start).days
+    progress = (dt - start).days / total
+
+    return 1.0 - (0.15 * progress)
