@@ -18,6 +18,9 @@ from app.models import (
     compute_top_probability_components,
     compute_market_heat_score,
     compute_pi_cycle_score,
+    compute_bottom_probability,
+    compute_local_top_probability,
+    compute_action_signal,
 )
 from app.chart import generate_chart
 
@@ -45,6 +48,9 @@ def run_once(print_only: bool = False) -> str:
     cycle = compute_cycle_position(pi)
     heat = compute_market_heat_score(pi, trend)
     pi_score = compute_pi_cycle_score(pi)
+    bottom = compute_bottom_probability(pi, trend)
+    local_top = compute_local_top_probability(pi, trend)
+    action = compute_action_signal(pi, trend)
 
     append_history({
         "date": pi["last_date"],
@@ -54,6 +60,12 @@ def run_once(print_only: bool = False) -> str:
         "cycle_position": cycle["percent"],
         "cycle_phase": cycle["phase"],
         "pi_cycle_score": pi_score["score"],
+        "bottom_probability": bottom["probability"],
+        "local_top_probability": local_top["probability"],
+        "action": action["action"],
+        "action_size": action["size"],
+        "action_confidence": action["confidence"],
+        "action_bias": action["bias"],
     })
 
     generate_chart()
@@ -90,7 +102,12 @@ def main() -> None:
     parser.add_argument("--watch", action="store_true", help="Run forever and check on an interval.")
     parser.add_argument("--interval-minutes", type=int, default=60, help="Polling interval for --watch mode.")
     args = parser.parse_args()
-
+    
+    if not os.path.exists("history.json"):
+        print("History missing → running backfill")
+    import backfill_history
+    backfill_history.main()
+    
     if not args.once and not args.watch:
         args.once = True
 

@@ -9,18 +9,18 @@ from app.models import (
     compute_cycle_position,
     compute_market_heat_score,
     compute_pi_cycle_score,
+    compute_bottom_probability,
+    compute_local_top_probability,
+    compute_action_signal,
 )
 
 
 
 def main():
     prices = fetch_btc_prices()
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=365 * 5)
-    cutoff_ms = int(cutoff.timestamp() * 1000)
+    print(f"Downloaded total BTC rows: {len(prices)}")
 
     filtered = prices
-
     history = []
 
     for i in range(len(filtered)):
@@ -36,6 +36,9 @@ def main():
             cycle = compute_cycle_position(pi)
             heat = compute_market_heat_score(pi, trend)
             pi_score = compute_pi_cycle_score(pi)
+            bottom = compute_bottom_probability(pi, trend)
+            local_top = compute_local_top_probability(pi, trend)
+            action = compute_action_signal(pi, trend)
 
             history.append({
                 "date": pi["last_date"],
@@ -45,9 +48,22 @@ def main():
                 "cycle_position": cycle["percent"],
                 "cycle_phase": cycle["phase"],
                 "pi_cycle_score": pi_score["score"],
+                "bottom_probability": bottom["probability"],
+                "local_top_probability": local_top["probability"],
+                "action": action["action"],
+                "action_size": action["size"],
+                "action_confidence": action["confidence"],
+                "action_bias": action["bias"],
             })
-        except Exception:
+
+        except Exception as e:
+            print(f"[WARN] Skipping row {i}: {e}")
             continue
+
+    print(f"Prepared history rows: {len(history)}")
+    if history:
+        print(f"First row date: {history[0]['date']}")
+        print(f"Last row date: {history[-1]['date']}")
 
     with open("history.json", "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)

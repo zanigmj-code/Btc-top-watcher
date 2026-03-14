@@ -575,3 +575,242 @@ def compute_distribution_score(trend: Dict[str, Any]) -> Dict[str, Any]:
         "state": state,
     }
 
+def compute_bottom_probability(pi: Dict[str, Any], trend: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+    drivers = []
+
+    heat = compute_market_heat_score(pi, trend)["score"]
+
+    p200 = float(trend["price_vs_sma200"])
+    p350 = float(trend["price_vs_sma350"])
+    r90 = float(trend["return_90d"])
+    r180 = float(trend["return_180d"])
+    gap = float(pi["gap_pct"])
+
+    if heat <= 10:
+        score += 30
+        drivers.append("Market heat extremely low")
+    elif heat <= 20:
+        score += 22
+        drivers.append("Market heat low")
+    elif heat <= 30:
+        score += 12
+        drivers.append("Market heat cooling")
+
+    if p200 <= 1.00:
+        score += 20
+        drivers.append("Price near/below 200 SMA")
+    elif p200 <= 1.05:
+        score += 15
+        drivers.append("Price close to 200 SMA")
+    elif p200 <= 1.15:
+        score += 8
+        drivers.append("Price not far from 200 SMA")
+
+    if p350 <= 1.00:
+        score += 18
+        drivers.append("Price near/below 350 SMA")
+    elif p350 <= 1.10:
+        score += 14
+        drivers.append("Price close to 350 SMA")
+    elif p350 <= 1.25:
+        score += 8
+        drivers.append("Price moderately extended over 350 SMA")
+
+    if r90 <= -10:
+        score += 12
+        drivers.append("90d return deeply negative")
+    elif r90 <= 0:
+        score += 10
+        drivers.append("90d return weak")
+    elif r90 <= 15:
+        score += 6
+        drivers.append("90d return still modest")
+
+    if r180 <= 0:
+        score += 10
+        drivers.append("180d return weak")
+    elif r180 <= 25:
+        score += 6
+        drivers.append("180d return moderate")
+
+    if gap >= 45:
+        score += 12
+        drivers.append("Pi Cycle gap very wide")
+    elif gap >= 30:
+        score += 8
+        drivers.append("Pi Cycle gap wide")
+    elif gap >= 20:
+        score += 4
+        drivers.append("Pi Cycle still far from top")
+
+    probability = max(0, min(100, round(score)))
+
+    if probability >= 70:
+        state = "HIGH"
+    elif probability >= 45:
+        state = "ELEVATED"
+    elif probability >= 25:
+        state = "MODERATE"
+    else:
+        state = "LOW"
+
+    if not drivers:
+        drivers.append("No strong bottom evidence yet")
+
+    return {
+        "probability": probability,
+        "state": state,
+        "drivers": drivers,
+    }
+
+
+def compute_local_top_probability(pi: Dict[str, Any], trend: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+    drivers = []
+
+    heat_data = compute_market_heat_score(pi, trend)
+    heat = heat_data["score"]
+    distribution = compute_distribution_score(trend)["score"]
+    acceleration = compute_acceleration_score(trend)["score"]
+
+    p200 = float(trend["price_vs_sma200"])
+    p350 = float(trend["price_vs_sma350"])
+    r90 = float(trend["return_90d"])
+    r180 = float(trend["return_180d"])
+
+    if heat >= 80:
+        score += 30
+        drivers.append("Market heat very high")
+    elif heat >= 65:
+        score += 22
+        drivers.append("Market heat high")
+    elif heat >= 50:
+        score += 14
+        drivers.append("Market heat elevated")
+
+    if distribution >= 34:
+        score += 20
+        drivers.append("Distribution extreme")
+    elif distribution >= 22:
+        score += 14
+        drivers.append("Distribution high")
+    elif distribution >= 12:
+        score += 8
+        drivers.append("Distribution elevated")
+
+    if acceleration >= 24:
+        score += 16
+        drivers.append("Price acceleration explosive")
+    elif acceleration >= 16:
+        score += 12
+        drivers.append("Price acceleration fast")
+    elif acceleration >= 8:
+        score += 6
+        drivers.append("Price acceleration healthy")
+
+    if p200 >= 1.45:
+        score += 12
+        drivers.append("Price stretched over 200 SMA")
+    elif p200 >= 1.25:
+        score += 8
+        drivers.append("Price extended over 200 SMA")
+
+    if p350 >= 2.0:
+        score += 12
+        drivers.append("Price stretched over 350 SMA")
+    elif p350 >= 1.6:
+        score += 8
+        drivers.append("Price extended over 350 SMA")
+
+    if r90 >= 60:
+        score += 8
+        drivers.append("90d return very strong")
+    elif r90 >= 30:
+        score += 5
+        drivers.append("90d return strong")
+
+    if r180 >= 120:
+        score += 6
+        drivers.append("180d return very strong")
+    elif r180 >= 70:
+        score += 4
+        drivers.append("180d return strong")
+
+# soft scaling
+    probability = round((score / 120) * 100)
+
+# clamp
+    probability = max(0, min(85, probability))
+
+    if probability >= 70:
+        state = "HIGH"
+    elif probability >= 45:
+        state = "ELEVATED"
+    elif probability >= 25:
+        state = "MODERATE"
+    else:
+        state = "LOW"
+
+    if not drivers:
+        drivers.append("No strong local top evidence yet")
+
+    return {
+        "probability": probability,
+        "state": state,
+        "drivers": drivers,
+    }
+
+
+def compute_action_signal(pi: Dict[str, Any], trend: Dict[str, Any]) -> Dict[str, Any]:
+    top_prob = compute_top_probability_components(pi)["probability"]
+    heat = compute_market_heat_score(pi, trend)["score"]
+    bottom_prob = compute_bottom_probability(pi, trend)["probability"]
+    local_top_prob = compute_local_top_probability(pi, trend)["probability"]
+
+    if top_prob >= 80 or heat >= 85:
+        action = "STRONG SELL"
+        size = 50
+        confidence = max(top_prob, heat)
+    elif local_top_prob >= 70 or heat >= 70:
+        action = "SELL"
+        size = 25
+        confidence = max(local_top_prob, heat)
+    elif local_top_prob >= 55 or heat >= 55:
+        action = "REDUCE"
+        size = 10
+        confidence = max(local_top_prob, heat)
+    elif bottom_prob >= 75:
+        action = "STRONG BUY"
+        size = 25
+        confidence = bottom_prob
+    elif bottom_prob >= 50:
+        action = "BUY"
+        size = 15
+        confidence = bottom_prob
+    elif bottom_prob >= 30:
+        action = "ACCUMULATE"
+        size = 5
+        confidence = bottom_prob
+    else:
+        action = "HOLD"
+        size = 0
+        confidence = max(bottom_prob, local_top_prob)
+
+    if action in {"STRONG BUY", "BUY", "ACCUMULATE"}:
+        bias = "BUY"
+    elif action in {"STRONG SELL", "SELL", "REDUCE"}:
+        bias = "SELL"
+    else:
+        bias = "NEUTRAL"
+
+    return {
+        "action": action,
+        "size": size,
+        "confidence": round(confidence),
+        "bias": bias,
+        "bottom_probability": bottom_prob,
+        "local_top_probability": local_top_prob,
+        "top_probability": top_prob,
+        "market_heat": heat,
+    }
