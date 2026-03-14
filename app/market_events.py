@@ -1,12 +1,10 @@
-EVENTS = {
-    "2013-04-10": "MtGox crash",
-    "2017-12-17": "ICO bubble peak",
-    "2020-03-12": "Covid crash",
-    "2021-05-19": "China mining ban",
-    "2022-05-09": "LUNA collapse",
-    "2022-06-18": "3AC crisis",
-    "2022-11-08": "FTX collapse",
-    "2024-01-10": "Spot ETF approval",
-    "2024-04-20": "Bitcoin halving",
-}
-
+EVENTS = [
+    {"date": "2013-04-10", "label": "MtGox crash", "type": "negative"},
+    {"date": "2017-12-17", "label": "ICO bubble peak", "type": "negative"},
+    {"date": "2020-03-12", "label": "Covid crash", "type": "negative"},
+    {"date": "2021-05-19", "label": "China mining ban", "type": "negative"},
+    {"date": "2022-05-09", "label": "LUNA collapse", "type": "negative"},
+    {"date": "2022-06-18", "label": "3AC crisis", "type": "negative"},
+    {"date": "2022-11-08", "label": "FTX collapse", "type": "negative"},
+    {"date": "2024-01-10", "label": "Spot ETF approval", "type": "positive"},
+]

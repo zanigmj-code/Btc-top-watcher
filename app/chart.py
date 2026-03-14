@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+import matplotlib.dates as mdates
 
 from app.market_events import EVENTS
 
@@ -43,51 +45,109 @@ def _load_history():
 
     return parsed
 
+def _smooth_series(values, window=5):
+    if not values:
+        return values
+
+    out = []
+    half = window // 2
+
+    for i in range(len(values)):
+        start = max(0, i - half)
+        end = min(len(values), i + half + 1)
+        chunk = [v for v in values[start:end] if v is not None]
+        out.append(sum(chunk) / len(chunk) if chunk else None)
+
+    return out
+
+
+def _plot_colored_price_line(ax, dates, prices, linewidth=2.2, alpha=1.0):
+    if len(dates) < 2:
+        ax.plot(dates, prices, linewidth=linewidth, alpha=alpha)
+        return
+
+    x = mdates.date2num(dates)
+    points = list(zip(x, prices))
+
+    segments = []
+    colors = []
+
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i + 1]
+        segments.append([p1, p2])
+
+        if p2[1] >= p1[1]:
+            colors.append("#2ca02c")  # green up
+        else:
+            colors.append("#d62728")  # red down
+
+    lc = LineCollection(segments, colors=colors, linewidths=linewidth, alpha=alpha)
+    ax.add_collection(lc)
+    ax.autoscale_view()
+
 def generate_history_chart():
     data = _load_history()
 
-    cutoff = datetime.now() - timedelta(days=365 * 10)
+    cutoff = datetime.now() - timedelta(days=365 * 6)
     data = [x for x in data if x["date"] >= cutoff]
 
     dates = [x["date"] for x in data]
     prices_raw = [x["btc_price"] for x in data]
     heat_raw = [x["market_heat"] for x in data]
     pi_cycle_raw = [x["pi_cycle_score"] for x in data]
-    top_prob_raw = [x["top_probability"] if x["top_probability"] >= 80 else None for x in data]
+    top_prob_markers = [x["top_probability"] if x["top_probability"] >= 50 else None for x in data]
 
-    prices = _smooth_series(prices_raw, window=9)
+    prices = _smooth_series(prices_raw, window=7)
     heat = _smooth_series(heat_raw, window=9)
     pi_cycle = _smooth_series(pi_cycle_raw, window=9)
 
-    fig, ax1 = plt.subplots(figsize=(14, 6))
+    fig, ax1 = plt.subplots(figsize=(13, 6))
 
-    # price raw + smooth
-    ax1.plot(dates, prices_raw, linewidth=1, alpha=0.18)
-    ax1.plot(dates, prices, linewidth=2.2)
+    # reserve space on the right for info box
+    fig.subplots_adjust(right=0.84)
+
+    # faint raw BTC line
+    ax1.plot(dates, prices_raw, color="#c7c7c7", linewidth=1, alpha=0.18)
+
+    # main BTC line: green up / red down
+    _plot_colored_price_line(ax1, dates, prices, linewidth=2.8, alpha=1.0)
+    ax1.plot([], [], color="#2ca02c", linewidth=2.8, label="BTC Price")
+
     ax1.set_ylabel("BTC Price")
     ax1.set_xlabel("Date")
 
     ax2 = ax1.twinx()
 
-    # heat zones
-    ax2.axhspan(0, 20, alpha=0.15)
-    ax2.axhspan(20, 40, alpha=0.15)
-    ax2.axhspan(40, 60, alpha=0.15)
-    ax2.axhspan(60, 80, alpha=0.15)
-    ax2.axhspan(80, 100, alpha=0.15)
+    # Heat zones background - soft / neutral
+    ax2.axhspan(0, 20, color="#eef3f7", alpha=0.18)
+    ax2.axhspan(20, 40, color="#e6edf3", alpha=0.18)
+    ax2.axhspan(40, 60, color="#dde6ee", alpha=0.18)
+    ax2.axhspan(60, 80, color="#d5dfe8", alpha=0.18)
+    ax2.axhspan(80, 100, color="#cdd8e2", alpha=0.18)
 
-    # heat raw + smooth
-    ax2.plot(dates, heat_raw, linewidth=1, alpha=0.15)
-    ax2.plot(dates, heat, linewidth=2, alpha=0.9)
-    ax2.plot(dates, pi_cycle, linewidth=1.8, alpha=0.9)
+    # secondary metrics
+    ax2.plot(dates, heat_raw, color="#666666", linewidth=1, alpha=0.10)
+    ax2.plot(dates, heat, color="#111111", linewidth=1.8, alpha=0.50, label="Market Heat")
+    ax2.plot(dates, pi_cycle, color="#1f77b4", linewidth=1.9, alpha=0.90, label="Pi Cycle Score")
 
-    # top spikes
-    ax2.scatter(dates, top_prob_raw, s=18, zorder=5)
+    # late-cycle alert markers only
+    ax2.scatter(
+        dates,
+        top_prob_markers,
+        color="#c2185b",          # dark pink
+        edgecolors="white",
+        linewidths=0.7,
+        s=48,
+        zorder=6,
+        alpha=0.95,
+        label="Late-Cycle Alerts",
+    )
 
     ax2.set_ylabel("Market Heat / Top Probability")
     ax2.set_ylim(0, 100)
 
-    # halving lines
+    # halving lines (blue)
     halving_dates = [
         datetime(2012, 11, 28),
         datetime(2016, 7, 9),
@@ -96,33 +156,89 @@ def generate_history_chart():
     ]
 
     for h in halving_dates:
-        ax1.axvline(h, linestyle="--", linewidth=1, color="gray", alpha=0.55)
+        if h >= cutoff:
+            ax1.axvline(h, linestyle="--", linewidth=1, color="#1f77b4", alpha=0.55)
+            ax1.text(
+                h,
+                ax1.get_ylim()[1] * 0.97,
+                "Bitcoin halving",
+                rotation=90,
+                fontsize=7,
+                color="#1f77b4",
+                alpha=0.75,
+                verticalalignment="top",
+                horizontalalignment="right",
+            )
 
-    # major market events
-    for date_str, label in EVENTS.items():
-        event_dt = datetime.strptime(date_str, "%Y-%m-%d")
+    # events: positive green, negative red
+    for event in EVENTS:
+        event_dt = datetime.strptime(event["date"], "%Y-%m-%d")
         if event_dt < cutoff:
             continue
 
-        ax1.axvline(event_dt, linestyle=":", linewidth=1, color="purple", alpha=0.22)
+        color = "#2ca02c" if event["type"] == "positive" else "#d62728"
+
+        ax1.axvline(event_dt, linestyle=":", linewidth=1, color=color, alpha=0.35)
         ax1.text(
             event_dt,
-            ax1.get_ylim()[1] * 0.93,
-            label,
+            ax1.get_ylim()[1] * 0.91,
+            event["label"],
             rotation=90,
             fontsize=7,
-            alpha=0.55,
+            color=color,
+            alpha=0.72,
             verticalalignment="top",
             horizontalalignment="right",
         )
+
+    # combined legend
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    handles2, labels2 = ax2.get_legend_handles_labels()
+
+    if handles1 or handles2:
+        ax2.legend(
+            handles1 + handles2,
+            labels1 + labels2,
+            loc="upper left",
+            framealpha=0.88,
+            fontsize=9,
+        )
+
+    # latest BTC status text OUTSIDE the chart
+    last_date = dates[-1]
+    last_price = prices_raw[-1]
+    prev_price = prices_raw[-2] if len(prices_raw) >= 2 else prices_raw[-1]
+
+    daily_change_usd = last_price - prev_price
+    daily_change_pct = ((last_price - prev_price) / prev_price * 100) if prev_price else 0.0
+
+    if daily_change_usd >= 0:
+        change_color = "#2ca02c"
+    else:
+        change_color = "#d62728"
+
+    # static labels
+    fig.text(0.855, 0.20, f"Last Date: {last_date.strftime('%Y-%m-%d')}",
+             fontsize=10, ha="right", va="top", color="#222222")
+    fig.text(0.855, 0.17, f"BTC Price: ${last_price:,.2f}",
+             fontsize=10, ha="right", va="top", color="#222222")
+
+    # colored daily change
+    fig.text(0.855, 0.14, "1D Change:",
+             fontsize=10, ha="right", va="top", color="#222222")
+    fig.text(0.855, 0.11,
+             f"{daily_change_usd:+,.2f} USD ({daily_change_pct:+.2f}%)",
+             fontsize=10, ha="right", va="top", color=change_color)
 
     ax1.set_xlim(left=cutoff)
 
     fig.autofmt_xdate()
     plt.title("BTC Historical Cycle Model")
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 0.84, 1])
     plt.savefig("chart_history.png")
     plt.close()
+
+    
 
 def generate_current_chart(days: int = 90):
     data = _load_history()
@@ -205,7 +321,7 @@ def generate_current_chart(days: int = 90):
     ax2.scatter([dates[-1]], [action_score[-1]], s=45, zorder=5)
     ax2.scatter([dates[-1]], [bottom_prob[-1]], s=35, zorder=5)
     ax2.scatter([dates[-1]], [local_top_prob[-1]], s=35, zorder=5)
-
+    ax2.scatter([dates[-1]], [cycle_top_prob[-1]], s=35, zorder=5, color="#c2185b")
     ax2.set_ylabel("Action / Probability")
     ax2.set_ylim(0, 100)
 

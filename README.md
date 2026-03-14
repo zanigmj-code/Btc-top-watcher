@@ -22,7 +22,3 @@ Indicator Breakdown
 
 ## Usage
 
-Run manually:
-
-```bash
-python btc_top_watcher.py --once
