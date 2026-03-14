@@ -9,6 +9,8 @@ A simple Bitcoin cycle monitoring script that estimates the probability of a mar
 - MVRV Approximation
 - Puell Multiple Approximation
 
+- Adding more indicators 
+
 ## Output Example
 
 BTC Top Watcher: NORMAL  
@@ -20,5 +22,12 @@ Indicator Breakdown
 - MVRV Approx: 5%
 - Puell Approx: 7%
 
-## Usage
+- + graphs for indicators..
+ 
+- soon new indicators + signals. 
+
+## USAGE
+- search BTC tops/bottoms
+- watch markets moves
+- add signlas for buy/sell/hold
 
